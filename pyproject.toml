@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forecasting-automation"
+version = "0.1.0"
+description = "Automated Jira data extraction and project querying for forecasting"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "jira>=3.8.0",
+    "pydantic>=2.0.0",
+    "tabulate>=0.9.0",
+    "python-dateutil>=2.8.2",
+    "streamlit>=1.35.0",
+    "pandas>=2.0.0",
+]
+
+[project.scripts]
+forecasting-automation = "forecasting_automation.main:main"
+forecasting-ui = "forecasting_automation.main:run_ui"
+
+
+[tool.setuptools.packages.find]
+where = ["src"]

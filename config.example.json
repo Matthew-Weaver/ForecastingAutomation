@@ -1,0 +1,25 @@
+{
+  "jira": {
+    "server": "https://your-domain.atlassian.net",
+    "email": "your-email@example.com",
+    "api_token": "YOUR_JIRA_API_TOKEN"
+  },
+  "project": {
+    "key": "YOUR_PROJECT_KEY"
+  },
+  "query": {
+    "custom_jql": "",
+    "max_results": 100,
+    "fields": [
+      "summary",
+      "status",
+      "issuetype",
+      "created",
+      "updated",
+      "resolutiondate",
+      "assignee",
+      "priority"
+    ],
+    "story_points_field": "customfield_10016"
+  }
+}
