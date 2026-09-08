@@ -140,29 +140,61 @@ def summarize_days(
     }
 
 
-DONE_STATUSES = {"done", "on uat", "migrate to uat"}
+STATUS_BUCKETS = ("To Do", "In Progress", "Done", "Exclude")
 
 
-def is_done_status(status_name: Optional[str], category_name: Optional[str] = None) -> bool:
-    """Check if a status represents completed work.
-    
-    Treats 'Done', 'On UAT', 'Migrate to UAT', and any Jira 'Done' category status as completed.
-    """
-    if status_name and status_name.strip().lower() in DONE_STATUSES:
-        return True
-    if category_name and "done" in category_name.strip().lower():
-        return True
-    return False
+def categorize_status(
+    status_name: Optional[str],
+    jira_category: Optional[str] = None,
+    status_mapping: Optional[Dict[str, str]] = None,
+) -> str:
+    """Categorize a Jira status into 'To Do', 'In Progress', 'Done', or 'Exclude'."""
+    if status_mapping and status_name:
+        for mapped_name, mapped_bucket in status_mapping.items():
+            if mapped_name.strip().lower() == status_name.strip().lower():
+                return mapped_bucket
+
+    if jira_category:
+        lowered_cat = jira_category.strip().lower()
+        if "done" in lowered_cat:
+            return "Done"
+        if "progress" in lowered_cat:
+            return "In Progress"
+        if "to do" in lowered_cat or "new" in lowered_cat:
+            return "To Do"
+
+    if status_name:
+        lowered_name = status_name.strip().lower()
+        if lowered_name == "done":
+            return "Done"
+        if lowered_name in ("in progress", "in development", "progress"):
+            return "In Progress"
+        if lowered_name in ("to do", "backlog", "open"):
+            return "To Do"
+        if lowered_name in ("exclude", "excluded"):
+            return "Exclude"
+
+    return "To Do"
+
+
+def is_done_status(
+    status_name: Optional[str],
+    category_name: Optional[str] = None,
+    status_mapping: Optional[Dict[str, str]] = None,
+) -> bool:
+    """Check if a status represents completed work."""
+    return categorize_status(status_name, category_name, status_mapping) == "Done"
 
 
 def extract_weekly_throughput_from_issues(
     issues: List[Dict[str, Any]],
     days_window: Optional[int] = None,
     end_date: Optional[datetime.date] = None,
+    status_mapping: Optional[Dict[str, str]] = None,
 ) -> Tuple[List[datetime.date], List[int]]:
     """Derive cards completed per week, keyed by each week's Monday.
 
-    Considers issues in 'Done', 'On UAT', 'Migrate to UAT' or 'Done' category.
+    Considers issues categorized as 'Done' via status mapping or Jira category.
     Includes 0-progress weeks to reflect realistic delivery cadence.
     """
     if end_date is None:
@@ -174,7 +206,7 @@ def extract_weekly_throughput_from_issues(
         status_name = issue.get("status")
         cat_name = issue.get("status_category")
 
-        if is_done_status(status_name, cat_name):
+        if is_done_status(status_name, cat_name, status_mapping):
             res_raw = (
                 issue.get("completed_date")
                 or issue.get("resolution_date")

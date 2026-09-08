@@ -24,3 +24,7 @@ forecasting-ui = "forecasting_automation.main:run_ui"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

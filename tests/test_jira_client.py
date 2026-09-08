@@ -81,13 +81,13 @@ def _make_mock_issue(num):
     return m
 
 
-def _make_client():
+def _make_client(status_mapping=None):
     config = JiraConfig(
         server="https://company.atlassian.net",
         email="dev@company.com",
         api_token="valid_token",
     )
-    return JiraClient(config)
+    return JiraClient(config, status_mapping=status_mapping)
 
 
 def test_query_project_issues_fetches_all_on_cloud():
@@ -120,6 +120,39 @@ def test_query_project_issues_honors_max_results():
     assert mock_jira.enhanced_search_issues.call_args.kwargs["maxResults"] == 25
 
 
+def test_parse_issue_completed_date_honors_status_mapping():
+    config = JiraConfig(
+        server="https://company.atlassian.net",
+        email="dev@company.com",
+        api_token="valid_token",
+    )
+    client = JiraClient(config, status_mapping={"On UAT": "Done"})
+
+    mock_issue = MagicMock()
+    mock_issue.key = "DEV-200"
+    mock_issue.fields.summary = "UAT item"
+    mock_issue.fields.issuetype.name = "Story"
+    mock_issue.fields.status.name = "On UAT"
+    mock_issue.fields.status.statusCategory.name = "In Progress"
+    mock_issue.fields.assignee = None
+    mock_issue.fields.priority.name = "Medium"
+    mock_issue.fields.created = "2026-01-01T10:00:00.000+0000"
+    mock_issue.fields.updated = "2026-01-05T12:00:00.000+0000"
+    mock_issue.fields.resolutiondate = None
+    mock_issue.fields.customfield_10016 = None
+
+    history = MagicMock()
+    history.created = "2026-01-04T09:00:00.000+0000"
+    item = MagicMock()
+    item.field = "status"
+    item.toString = "On UAT"
+    history.items = [item]
+    mock_issue.changelog.histories = [history]
+
+    parsed = client._parse_issue(mock_issue)
+    assert parsed["completed_date"] == "2026-01-04T09:00:00.000+0000"
+
+
 def test_query_project_issues_falls_back_on_server():
     client = _make_client()
 
@@ -145,7 +178,7 @@ def _make_history(created, to_status):
 
 
 def test_completed_date_uses_earliest_done_transition():
-    client = _make_client()
+    client = _make_client(status_mapping={"On UAT": "Done", "Migrate to UAT": "Done"})
 
     issue = _make_mock_issue(200)
     issue.fields.status.name = "On UAT"
@@ -163,7 +196,7 @@ def test_completed_date_uses_earliest_done_transition():
 
 
 def test_completed_date_falls_back_when_changelog_missing():
-    client = _make_client()
+    client = _make_client(status_mapping={"On UAT": "Done"})
 
     issue = _make_mock_issue(201)
     issue.fields.status.name = "On UAT"
@@ -178,7 +211,7 @@ def test_completed_date_is_none_for_open_issues():
     client = _make_client()
 
     issue = _make_mock_issue(202)
-    issue.changelog.histories = [_make_history("2026-02-10T09:00:00.000+0000", "On UAT")]
+    issue.changelog.histories = [_make_history("2026-02-10T09:00:00.000+0000", "In Progress")]
 
     assert client._parse_issue(issue)["completed_date"] is None
 

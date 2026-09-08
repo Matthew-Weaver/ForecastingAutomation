@@ -4,8 +4,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator
+
+VALID_STATUS_BUCKETS = {
+    "to do": "To Do",
+    "in progress": "In Progress",
+    "done": "Done",
+    "exclude": "Exclude",
+}
 
 
 class JiraConfig(BaseModel):
@@ -107,6 +114,24 @@ class AppConfig(BaseModel):
     jira: JiraConfig
     project: ProjectConfig
     query: QueryConfig = Field(default_factory=QueryConfig)
+    status_mapping: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Optional mapping of Jira status names to 'To Do', 'In Progress', or 'Done'",
+    )
+
+    @field_validator("status_mapping", mode="before")
+    @classmethod
+    def validate_status_mapping(cls, v: Any) -> Dict[str, str]:
+        if not isinstance(v, dict):
+            return {}
+        cleaned: Dict[str, str] = {}
+        for k, val in v.items():
+            if not isinstance(k, str) or not isinstance(val, str):
+                continue
+            normalized = VALID_STATUS_BUCKETS.get(val.strip().lower())
+            if normalized:
+                cleaned[k.strip()] = normalized
+        return cleaned
 
 
 def find_config_file(config_path: Optional[str | Path] = None) -> Path:
