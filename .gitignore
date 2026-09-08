@@ -221,3 +221,9 @@ __marimo__/
 config.json
 *.local.json
 
+# Node / pnpm (task runner only)
+node_modules/
+.pnpm-store/
+npm-debug.log*
+pnpm-debug.log*
+

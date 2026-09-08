@@ -1,0 +1,22 @@
+{
+  "name": "forecasting-automation",
+  "version": "0.1.0",
+  "description": "Shorthand task runner for the Forecasting Automation Python project",
+  "private": true,
+  "packageManager": "pnpm@11.13.0",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "pytest -v",
+    "test:cov": "pytest --cov=forecasting_automation --cov-report=term-missing",
+    "start:cli": "python -m forecasting_automation.main",
+    "start": "streamlit run src/forecasting_automation/app.py",
+    "venv": "python -m venv .venv",
+    "setup": "python -m pip install -r requirements.txt -e .",
+    "clean": "rimraf --glob \"**/__pycache__\" .pytest_cache .coverage build dist \"src/*.egg-info\""
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.1"
+  }
+}

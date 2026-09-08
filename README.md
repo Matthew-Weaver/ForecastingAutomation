@@ -60,6 +60,40 @@ pip install -r requirements.txt
 ```
 *(Or install in editable mode: `pip install -e .`)*
 
+To also install the test tooling (`pytest`, `pytest-cov`):
+```bash
+pip install -r requirements-dev.txt
+```
+
+---
+
+## Shorthand Commands (pnpm)
+
+A root `package.json` wraps the common Python commands so they can be run as short scripts. Install the task runner once:
+
+```bash
+pnpm install
+```
+
+Activate your virtual environment first — the scripts call `python` / `pytest` from whatever environment is active.
+
+| Command | Runs |
+| :--- | :--- |
+| `pnpm test` | `pytest -v` |
+| `pnpm run test:cov` | `pytest --cov=forecasting_automation --cov-report=term-missing` |
+| `pnpm start` | `python -m forecasting_automation.main` |
+| `pnpm run ui` | `streamlit run src/forecasting_automation/app.py` |
+| `pnpm run venv` | `python -m venv .venv` |
+| `pnpm run setup` | `pip install -r requirements.txt -r requirements-dev.txt -e .` |
+| `pnpm run clean` | Removes `__pycache__`, `.pytest_cache`, `.coverage`, `build`, `dist`, `*.egg-info` |
+
+Extra arguments are forwarded to the underlying command:
+
+```bash
+pnpm run test -k test_config
+pnpm start --project OTHERPROJ
+```
+
 ---
 
 ## Configuration
