@@ -21,5 +21,6 @@
       "priority"
     ],
     "story_points_field": "customfield_10016"
-  }
+  },
+  "status_mapping": {}
 }

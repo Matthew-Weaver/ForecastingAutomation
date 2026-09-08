@@ -83,3 +83,46 @@ def test_save_and_load_raw_config(tmp_path: Path):
     assert raw["jira"]["server"] == "https://test.atlassian.net"
     assert raw["project"]["key"] == "TEST"
 
+
+def test_status_mapping_config_validation(tmp_path: Path):
+    config_data = {
+        "jira": {
+            "server": "https://company.atlassian.net",
+            "email": "dev@company.com",
+            "api_token": "secret_token_123",
+        },
+        "project": {"key": "DEV"},
+        "status_mapping": {
+            "On UAT": "done",
+            "In Review": "in progress",
+            "Backlog": "to do",
+            "Won't Fix": "exclude",
+            "Invalid Status": "some_random_bucket",
+        },
+    }
+    cfg_file = tmp_path / "config.json"
+    cfg_file.write_text(json.dumps(config_data), encoding="utf-8")
+
+    loaded = load_config(cfg_file)
+    assert loaded.status_mapping["On UAT"] == "Done"
+    assert loaded.status_mapping["In Review"] == "In Progress"
+    assert loaded.status_mapping["Backlog"] == "To Do"
+    assert loaded.status_mapping["Won't Fix"] == "Exclude"
+    assert "Invalid Status" not in loaded.status_mapping
+
+
+def test_empty_status_mapping_default(tmp_path: Path):
+    config_data = {
+        "jira": {
+            "server": "https://company.atlassian.net",
+            "email": "dev@company.com",
+            "api_token": "secret_token_123",
+        },
+        "project": {"key": "DEV"},
+    }
+    cfg_file = tmp_path / "config.json"
+    cfg_file.write_text(json.dumps(config_data), encoding="utf-8")
+
+    loaded = load_config(cfg_file)
+    assert loaded.status_mapping == {}
+

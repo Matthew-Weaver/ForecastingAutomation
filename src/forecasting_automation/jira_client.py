@@ -16,9 +16,15 @@ logger = logging.getLogger(__name__)
 class JiraClient:
     """Wrapper around Jira Cloud client for authentication and querying."""
 
-    def __init__(self, config: JiraConfig):
+    def __init__(
+        self,
+        config: JiraConfig,
+        status_mapping: Optional[Dict[str, str]] = None,
+    ):
         self.config = config
+        self.status_mapping = status_mapping or {}
         self._client: Optional[JIRA] = None
+        self._status_categories: Dict[str, str] = {}
 
     def connect(self) -> JIRA:
         """Create and authenticate a Jira client session."""
@@ -131,8 +137,7 @@ class JiraClient:
 
         return parsed_issues
 
-    @staticmethod
-    def _first_done_transition(issue: Any) -> Optional[str]:
+    def _first_done_transition(self, issue: Any) -> Optional[str]:
         """Timestamp of the earliest changelog transition into a done status."""
         histories = getattr(getattr(issue, "changelog", None), "histories", None) or []
 
@@ -145,7 +150,9 @@ class JiraClient:
             for item in getattr(history, "items", []):
                 if getattr(item, "field", "") != "status":
                     continue
-                if not is_done_status(getattr(item, "toString", None)):
+                to_status = getattr(item, "toString", None)
+                cat_name = self._status_categories.get(to_status) if to_status else None
+                if not is_done_status(to_status, cat_name, self.status_mapping):
                     continue
                 try:
                     parsed = dateutil.parser.parse(raw)
@@ -201,9 +208,8 @@ class JiraClient:
         resolution_date = getattr(fields, "resolutiondate", None)
         updated = getattr(fields, "updated", None)
 
-        # UAT statuses never set resolutiondate, so the changelog is the real source
         completed_date = None
-        if is_done_status(status_name, status_category):
+        if is_done_status(status_name, status_category, self.status_mapping):
             completed_date = self._first_done_transition(issue) or resolution_date or updated
 
         return {
@@ -254,10 +260,13 @@ class JiraClient:
         query_config: QueryConfig,
     ) -> Dict[str, Any]:
         """Fetch project issues and group them by status with counts and card metadata."""
-        issues = self.query_project_issues(project_key, query_config)
-
-        # Retrieve workflow statuses to establish canonical ordering if possible
+        # Retrieve workflow statuses first to populate category cache before parsing issues
         known_statuses = self.get_project_statuses(project_key)
+        for s in known_statuses:
+            if s.get("name") and s.get("category"):
+                self._status_categories[s["name"]] = s["category"]
+
+        issues = self.query_project_issues(project_key, query_config)
 
         # Group issues
         grouped: Dict[str, Dict[str, Any]] = {}

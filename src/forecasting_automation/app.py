@@ -29,7 +29,9 @@ from forecasting_automation.config import (
     save_config,
 )
 from forecasting_automation.forecaster import (
+    STATUS_BUCKETS,
     add_working_days,
+    categorize_status,
     extract_weekly_throughput_from_issues,
     is_done_status,
     run_simulation,
@@ -79,6 +81,7 @@ def get_current_raw_config() -> dict:
                 ],
                 "story_points_field": "customfield_10016",
             },
+            "status_mapping": {},
         }
     return raw
 
@@ -87,13 +90,14 @@ def get_current_raw_config() -> dict:
 def render_settings_tab():
     """Render the User Settings view to manage config.json variables."""
     st.subheader("⚙️ User Settings (config.json)")
-    st.caption("Manage your Jira credentials, target project, and query variables.")
+    st.caption("Manage your Jira credentials, target project, status mapping, and query variables.")
 
     config_path = get_default_config_path()
     raw_cfg = get_current_raw_config()
     jira_dict = raw_cfg.get("jira", {})
     proj_dict = raw_cfg.get("project", {})
     query_dict = raw_cfg.get("query", {})
+    saved_mapping: Dict[str, str] = raw_cfg.get("status_mapping", {})
 
     with st.form("settings_form", enter_to_submit=False):
         st.markdown("#### 1. Jira Cloud Credentials")
@@ -134,9 +138,53 @@ def render_settings_tab():
                 help="Jira custom field ID for story points (default: customfield_10016)",
             )
 
-        col_save, col_test = st.columns([1, 1])
+        st.markdown("#### 3. Status Mapping (To Do / In Progress / Done / Exclude)")
+        st.caption(
+            "Map statuses returned from Jira to forecasting buckets. 'Exclude' statuses will be completely ignored in forecasting."
+        )
+
+        # Merge discovered statuses from session state with saved mapping
+        discovered: Dict[str, Dict[str, Any]] = st.session_state.get("discovered_statuses", {})
+        all_status_names = list(discovered.keys())
+        for sm_key in saved_mapping.keys():
+            if sm_key not in all_status_names:
+                all_status_names.append(sm_key)
+
+        updated_mapping_inputs = {}
+        if all_status_names:
+            sorted_statuses = sorted(all_status_names)
+            for i in range(0, len(sorted_statuses), 2):
+                col_left, col_right = st.columns(2)
+                for col, s_name in zip([col_left, col_right], sorted_statuses[i:i + 2]):
+                    with col:
+                        meta = discovered.get(s_name, {})
+                        jira_cat = meta.get("category", "")
+                        card_count = meta.get("count", None)
+
+                        # Default selection: configured value -> fallback categorization
+                        effective_val = categorize_status(s_name, jira_cat, saved_mapping)
+                        default_idx = STATUS_BUCKETS.index(effective_val) if effective_val in STATUS_BUCKETS else 0
+
+                        count_label = f" ({card_count} cards)" if card_count is not None else ""
+                        cat_hint = f" [Jira: {jira_cat}]" if jira_cat else ""
+
+                        selected_bucket = st.selectbox(
+                            f"**{s_name}**{count_label}{cat_hint}",
+                            options=STATUS_BUCKETS,
+                            index=default_idx,
+                            key=f"status_map_{s_name}",
+                        )
+                        updated_mapping_inputs[s_name] = selected_bucket
+        else:
+            st.info(
+                "ℹ️ No statuses discovered yet. Open the **Project Status Breakdown** tab once to load statuses from Jira, or configure them manually."
+            )
+
+        col_save, col_reset, col_test = st.columns([1, 1, 1])
         with col_save:
             submitted_save = st.form_submit_button("💾 Save Settings to config.json", use_container_width=True)
+        with col_reset:
+            submitted_reset = st.form_submit_button("🔄 Reset Mapping to Jira Defaults", use_container_width=True)
         with col_test:
             submitted_test = st.form_submit_button("🔌 Test Connection", use_container_width=True)
 
@@ -159,10 +207,36 @@ def render_settings_tab():
                 ]),
                 "story_points_field": story_points_val.strip() if story_points_val else None,
             },
+            "status_mapping": updated_mapping_inputs,
         }
         saved_file = save_config(updated_dict, config_path)
 
         st.success(f"✅ Settings successfully saved to `{saved_file.name}`!")
+        st.rerun()
+
+    if submitted_reset:
+        updated_dict = {
+            "jira": {
+                "server": server_val.strip().rstrip("/"),
+                "email": email_val.strip(),
+                "api_token": api_token_val.strip(),
+            },
+            "project": {
+                "key": project_key_val.strip().upper(),
+            },
+            "query": {
+                "custom_jql": query_dict.get("custom_jql", ""),
+                "max_results": query_dict.get("max_results", None),
+                "fields": query_dict.get("fields", [
+                    "summary", "status", "issuetype", "created", "updated",
+                    "resolutiondate", "assignee", "priority"
+                ]),
+                "story_points_field": story_points_val.strip() if story_points_val else None,
+            },
+            "status_mapping": {},
+        }
+        saved_file = save_config(updated_dict, config_path)
+        st.success(f"✅ Status mapping reset to Jira defaults in `{saved_file.name}`!")
         st.rerun()
 
 
@@ -199,7 +273,7 @@ def render_status_overview():
         st.info("Please open the **Settings** tab to enter your Jira credentials and project key.")
         return
 
-    client = JiraClient(app_config.jira)
+    client = JiraClient(app_config.jira, app_config.status_mapping)
 
     # Top Control Bar
     col_proj_header, col_filter, col_refresh = st.columns([2, 3, 1])
@@ -232,6 +306,15 @@ def render_status_overview():
     status_groups: Dict[str, Dict[str, Any]] = grouped_data["status_groups"]
     total_issues = len(issues)
 
+    # Discover and cache statuses in session state for the settings page
+    discovered: Dict[str, Dict[str, Any]] = {}
+    for st_name, s_data in status_groups.items():
+        discovered[st_name] = {
+            "category": s_data.get("category", "Undefined"),
+            "count": s_data.get("count", 0),
+        }
+    st.session_state["discovered_statuses"] = discovered
+
     if not issues:
         st.info(f"No issues found in project `{app_config.project.key}` for the current query.")
         return
@@ -258,7 +341,7 @@ def render_status_overview():
     for st_name, data in status_groups.items():
         if data["count"] > 0 or not data["issues"]:
             raw_cat = data.get("category", "Undefined")
-            display_cat = "Done" if is_done_status(st_name, raw_cat) else raw_cat
+            display_cat = categorize_status(st_name, raw_cat, app_config.status_mapping)
             status_summary_rows.append({
                 "Status": st_name,
                 "Category": display_cat,
@@ -306,8 +389,15 @@ def render_status_overview():
 
         # Category icon/badge
         cat = s_data.get("category", "")
-        is_done = is_done_status(status_name, cat)
-        cat_badge = "🟢" if is_done else ("🔵" if "progress" in cat.lower() else "⚪")
+        resolved_bucket = categorize_status(status_name, cat, app_config.status_mapping)
+        if resolved_bucket == "Done":
+            cat_badge = "🟢"
+        elif resolved_bucket == "In Progress":
+            cat_badge = "🔵"
+        elif resolved_bucket == "Exclude":
+            cat_badge = "🚫"
+        else:
+            cat_badge = "⚪"
 
         expander_title = f"{cat_badge} **{status_name}** — ({len(card_list)} cards" + (f" of {count})" if filtered_search else ")")
 
@@ -383,7 +473,7 @@ def render_forecasting_tab():
         st.info("Please open the **Settings** tab to enter your Jira credentials and project key.")
         return
 
-    client = JiraClient(app_config.jira)
+    client = JiraClient(app_config.jira, app_config.status_mapping)
 
     # Fetch issues for the project
     with st.spinner(f"Loading data for project '{app_config.project.key}'..."):
@@ -403,18 +493,22 @@ def render_forecasting_tab():
         st.warning(f"No issues found in project `{app_config.project.key}`.")
         return
 
-    # Auto-calculate default backlog (cards not in Done / UAT statuses)
-    non_done_count = sum(
+    # Auto-calculate default backlog (cards in To Do / In Progress, ignoring Exclude and Done)
+    active_backlog_count = sum(
         s_data["count"]
         for s_name, s_data in status_groups.items()
-        if not is_done_status(s_name, s_data.get("category", ""))
+        if categorize_status(s_name, s_data.get("category", ""), app_config.status_mapping) in ("To Do", "In Progress")
     )
     done_count = sum(
         s_data["count"]
         for s_name, s_data in status_groups.items()
-        if is_done_status(s_name, s_data.get("category", ""))
+        if is_done_status(s_name, s_data.get("category", ""), app_config.status_mapping)
     )
-
+    excluded_count = sum(
+        s_data["count"]
+        for s_name, s_data in status_groups.items()
+        if categorize_status(s_name, s_data.get("category", ""), app_config.status_mapping) == "Exclude"
+    )
 
     # Simulation Controls
     st.markdown("#### ⚙️ Simulation Parameters")
@@ -425,8 +519,8 @@ def render_forecasting_tab():
             "Cards Left (Remaining Backlog)",
             min_value=1,
             max_value=10000,
-            value=max(1, non_done_count),
-            help=f"Auto-detected {non_done_count} remaining non-Done cards in project.",
+            value=max(1, active_backlog_count),
+            help=f"Auto-detected {active_backlog_count} remaining active cards in project (excluding {excluded_count} Excluded and {done_count} Done cards).",
         )
 
     with ctrl_col2:
@@ -442,6 +536,7 @@ def render_forecasting_tab():
     weeks_list, throughput = extract_weekly_throughput_from_issues(
         issues,
         days_window=THROUGHPUT_WINDOW_DAYS,
+        status_mapping=app_config.status_mapping,
     )
 
     total_throughput = sum(throughput) if throughput else 0
