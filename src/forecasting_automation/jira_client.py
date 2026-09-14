@@ -137,6 +137,51 @@ class JiraClient:
 
         return parsed_issues
 
+    def query_by_jql(
+        self,
+        jql: str,
+        fields: Optional[List[str]] = None,
+        max_results: Optional[int] = None,
+        expand_changelog: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Query issues using raw JQL without modifying the query string."""
+        client = self.connect()
+
+        fields_to_fetch = list(
+            fields
+            if fields is not None
+            else ["summary", "status", "description", "created", "updated", "assignee", "priority", "issuetype"]
+        )
+
+        logger.info("Executing raw JQL: %s", jql)
+        fetch_limit = max_results or False
+
+        kwargs: Dict[str, Any] = {
+            "jql_str": jql,
+            "maxResults": fetch_limit,
+        }
+        if expand_changelog:
+            kwargs["expand"] = "changelog"
+
+        try:
+            if getattr(client, "_is_cloud", False) and hasattr(client, "enhanced_search_issues"):
+                kwargs["fields"] = fields_to_fetch
+                raw_issues = client.enhanced_search_issues(**kwargs)
+            else:
+                kwargs["fields"] = ",".join(fields_to_fetch)
+                raw_issues = client.search_issues(**kwargs)
+        except JIRAError as e:
+            raise RuntimeError(f"Jira JQL search query failed ({e.status_code}): {e.text}") from e
+
+        logger.info("Retrieved %d issues from raw JQL search", len(raw_issues))
+
+        parsed_issues = []
+        for issue in raw_issues:
+            parsed = self._parse_issue(issue)
+            parsed_issues.append(parsed)
+
+        return parsed_issues
+
     def _first_done_transition(self, issue: Any) -> Optional[str]:
         """Timestamp of the earliest changelog transition into a done status."""
         histories = getattr(getattr(issue, "changelog", None), "histories", None) or []
@@ -216,6 +261,7 @@ class JiraClient:
             "key": issue.key,
             "number": issue_number,
             "summary": getattr(fields, "summary", "N/A"),
+            "description": getattr(fields, "description", None),
             "issue_type": issuetype_name,
             "status": status_name,
             "status_category": status_category,

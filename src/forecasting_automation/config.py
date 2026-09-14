@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -63,6 +64,10 @@ class ProjectConfig(BaseModel):
     """Target Jira project settings."""
 
     key: str = Field(..., description="Jira project key (e.g. PROJ)")
+    target_date: Optional[datetime.date] = Field(
+        default=None,
+        description="Target project completion date (YYYY-MM-DD)",
+    )
 
     @field_validator("key")
     @classmethod
@@ -74,6 +79,18 @@ class ProjectConfig(BaseModel):
                 "Please configure a valid Jira project key in config.json."
             )
         return cleaned
+
+    @field_validator("target_date", mode="before")
+    @classmethod
+    def validate_target_date(cls, v: Any) -> Optional[datetime.date | str]:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            cleaned = v.strip()
+            if not cleaned:
+                return None
+            return cleaned
+        return v
 
 
 class QueryConfig(BaseModel):
@@ -107,6 +124,39 @@ class QueryConfig(BaseModel):
     )
 
 
+class StatusReportConfig(BaseModel):
+    """Configuration for status report tab queries."""
+
+    accomplishment_statuses: List[str] = Field(
+        default_factory=lambda: ["Ready for Testing", "Merge Requested"],
+        description="Jira statuses representing recent accomplishments",
+    )
+    next_up_statuses: List[str] = Field(
+        default_factory=lambda: ["In Development", "DEV In Progress"],
+        description="Jira statuses representing next up work items",
+    )
+
+    @field_validator("accomplishment_statuses", "next_up_statuses", mode="before")
+    @classmethod
+    def validate_status_list(cls, v: Any) -> List[str]:
+        if v is None:
+            return []
+        if isinstance(v, str):
+            items = [item.strip() for item in v.split(",") if item.strip()]
+            seen = set()
+            return [x for x in items if not (x in seen or seen.add(x))]
+        if isinstance(v, list):
+            cleaned = []
+            seen = set()
+            for item in v:
+                if isinstance(item, str) and item.strip():
+                    val = item.strip()
+                    if val not in seen:
+                        seen.add(val)
+                        cleaned.append(val)
+            return cleaned
+        return []
+
 
 class AppConfig(BaseModel):
     """Root application configuration."""
@@ -114,6 +164,7 @@ class AppConfig(BaseModel):
     jira: JiraConfig
     project: ProjectConfig
     query: QueryConfig = Field(default_factory=QueryConfig)
+    status_report: StatusReportConfig = Field(default_factory=StatusReportConfig)
     status_mapping: Dict[str, str] = Field(
         default_factory=dict,
         description="Optional mapping of Jira status names to 'To Do', 'In Progress', or 'Done'",
@@ -201,7 +252,7 @@ def save_config(config_data: AppConfig | dict, config_path: Optional[str | Path]
     path = Path(config_path) if config_path else get_default_config_path()
 
     if isinstance(config_data, AppConfig):
-        data = config_data.model_dump()
+        data = config_data.model_dump(mode="json")
     else:
         data = config_data
 

@@ -134,15 +134,19 @@ def test_extract_weekly_throughput_from_issues():
 
     weeks, throughput = extract_weekly_throughput_from_issues(
         issues,
-        end_date=datetime.date(2026, 9, 18),  # Friday; last full week starts Sept 7
+        end_date=datetime.date(2026, 9, 18),  # Friday of the week starting Sept 14
         status_mapping={"On UAT": "Done", "Migrate to UAT": "Done"},
     )
 
-    assert weeks == [datetime.date(2026, 8, 31), datetime.date(2026, 9, 7)]
-    assert throughput == [3, 0]
+    assert weeks == [
+        datetime.date(2026, 8, 31),
+        datetime.date(2026, 9, 7),
+        datetime.date(2026, 9, 14),
+    ]
+    assert throughput == [3, 0, 0]
 
 
-def test_extract_weekly_throughput_excludes_partial_current_week():
+def test_extract_weekly_throughput_includes_partial_current_week():
     issues = [
         {"status": "Done", "status_category": "Done", "completed_date": "2026-09-15T10:00:00.000+0000"},
     ]
@@ -153,7 +157,8 @@ def test_extract_weekly_throughput_excludes_partial_current_week():
         end_date=datetime.date(2026, 9, 18),
     )
 
-    assert datetime.date(2026, 9, 14) not in weeks
+    assert weeks == [datetime.date(2026, 9, 14)]
+    assert throughput == [1]
 
 
 def test_extract_weekly_throughput_prefers_completed_date():
@@ -173,5 +178,5 @@ def test_extract_weekly_throughput_prefers_completed_date():
     )
 
     assert weeks[0] == datetime.date(2026, 8, 31)
-    assert throughput == [1, 0]
+    assert throughput == [1, 0, 0]
 
