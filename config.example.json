@@ -5,7 +5,8 @@
     "api_token": "YOUR_JIRA_API_TOKEN"
   },
   "project": {
-    "key": "YOUR_PROJECT_KEY"
+    "key": "YOUR_PROJECT_KEY",
+    "target_date": ""
   },
   "query": {
     "custom_jql": "",
@@ -21,6 +22,16 @@
       "priority"
     ],
     "story_points_field": "customfield_10016"
+  },
+  "status_report": {
+    "accomplishment_statuses": [
+      "Ready for Testing",
+      "Merge Requested"
+    ],
+    "next_up_statuses": [
+      "In Development",
+      "DEV In Progress"
+    ]
   },
   "status_mapping": {}
 }

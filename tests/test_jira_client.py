@@ -42,6 +42,7 @@ def test_parse_issue():
     mock_issue = MagicMock()
     mock_issue.key = "DEV-101"
     mock_issue.fields.summary = "Implement login feature"
+    mock_issue.fields.description = "Detailed description of login feature"
     mock_issue.fields.issuetype.name = "Story"
     mock_issue.fields.status.name = "In Progress"
     mock_issue.fields.status.statusCategory.name = "In Progress"
@@ -58,6 +59,7 @@ def test_parse_issue():
     assert parsed["key"] == "DEV-101"
     assert parsed["number"] == 101
     assert parsed["summary"] == "Implement login feature"
+    assert parsed["description"] == "Detailed description of login feature"
     assert parsed["issue_type"] == "Story"
     assert parsed["status"] == "In Progress"
     assert parsed["assignee"] == "Jane Doe"
@@ -214,6 +216,45 @@ def test_completed_date_is_none_for_open_issues():
     issue.changelog.histories = [_make_history("2026-02-10T09:00:00.000+0000", "In Progress")]
 
     assert client._parse_issue(issue)["completed_date"] is None
+
+
+def test_query_by_jql_cloud():
+    client = _make_client()
+
+    mock_jira = MagicMock()
+    mock_jira._is_cloud = True
+    mock_issue = _make_mock_issue(301)
+    mock_jira.enhanced_search_issues.return_value = [mock_issue]
+    client._client = mock_jira
+
+    raw_jql = 'project = "DEV" AND status = "Merge Requested"'
+    results = client.query_by_jql(raw_jql, max_results=10)
+
+    assert len(results) == 1
+    assert results[0]["key"] == "DEV-301"
+    mock_jira.enhanced_search_issues.assert_called_once()
+    assert mock_jira.enhanced_search_issues.call_args.kwargs["jql_str"] == raw_jql
+    assert mock_jira.enhanced_search_issues.call_args.kwargs["maxResults"] == 10
+
+
+def test_query_by_jql_server():
+    client = _make_client()
+
+    mock_jira = MagicMock(spec=["search_issues", "_is_cloud"])
+    mock_jira._is_cloud = False
+    mock_issue = _make_mock_issue(302)
+    mock_jira.search_issues.return_value = [mock_issue]
+    client._client = mock_jira
+
+    raw_jql = 'project = "DEV" AND status IN ("In Development") ORDER BY created DESC'
+    results = client.query_by_jql(raw_jql)
+
+    assert len(results) == 1
+    assert results[0]["key"] == "DEV-302"
+    mock_jira.search_issues.assert_called_once()
+    assert mock_jira.search_issues.call_args.kwargs["jql_str"] == raw_jql
+    assert mock_jira.search_issues.call_args.kwargs["maxResults"] is False
+
 
 
 

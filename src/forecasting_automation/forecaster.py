@@ -191,11 +191,14 @@ def extract_weekly_throughput_from_issues(
     days_window: Optional[int] = None,
     end_date: Optional[datetime.date] = None,
     status_mapping: Optional[Dict[str, str]] = None,
+    weeks_window: Optional[int] = None,
 ) -> Tuple[List[datetime.date], List[int]]:
     """Derive cards completed per week, keyed by each week's Monday.
 
     Considers issues categorized as 'Done' via status mapping or Jira category.
-    Includes 0-progress weeks to reflect realistic delivery cadence.
+    Includes 0-progress weeks to reflect realistic delivery cadence, and the
+    current in-progress week up to end_date. When weeks_window is set, only the
+    most recent N weeks are returned.
     """
     if end_date is None:
         end_date = datetime.date.today()
@@ -238,16 +241,19 @@ def extract_weekly_throughput_from_issues(
             wk = week_start(d)
             counts_by_week[wk] = counts_by_week.get(wk, 0) + 1
 
-    # Trailing partial week would understate throughput, so stop at the last full week
-    last_full_week = week_start(end_date) - datetime.timedelta(days=7)
+    last_week = week_start(end_date)
 
     weeks_list: List[datetime.date] = []
     throughput_list: List[int] = []
 
     curr = week_start(start_date)
-    while curr <= last_full_week:
+    while curr <= last_week:
         weeks_list.append(curr)
         throughput_list.append(counts_by_week.get(curr, 0))
         curr += datetime.timedelta(days=7)
+
+    if weeks_window and weeks_window > 0:
+        weeks_list = weeks_list[-weeks_window:]
+        throughput_list = throughput_list[-weeks_window:]
 
     return weeks_list, throughput_list

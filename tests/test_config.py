@@ -126,3 +126,59 @@ def test_empty_status_mapping_default(tmp_path: Path):
     loaded = load_config(cfg_file)
     assert loaded.status_mapping == {}
 
+
+def test_project_target_date_parsing(tmp_path: Path):
+    import datetime
+
+    config_data = {
+        "jira": {
+            "server": "https://company.atlassian.net",
+            "email": "dev@company.com",
+            "api_token": "secret_token_123",
+        },
+        "project": {
+            "key": "DEV",
+            "target_date": "2026-12-31",
+        },
+    }
+    cfg_file = tmp_path / "config.json"
+    cfg_file.write_text(json.dumps(config_data), encoding="utf-8")
+
+    loaded = load_config(cfg_file)
+    assert loaded.project.target_date == datetime.date(2026, 12, 31)
+
+    # Empty string should normalize to None
+    config_data["project"]["target_date"] = "   "
+    cfg_file.write_text(json.dumps(config_data), encoding="utf-8")
+    loaded_empty = load_config(cfg_file)
+    assert loaded_empty.project.target_date is None
+
+
+def test_status_report_config(tmp_path: Path):
+    # Test defaults when omitted
+    config_data = {
+        "jira": {
+            "server": "https://company.atlassian.net",
+            "email": "dev@company.com",
+            "api_token": "secret_token_123",
+        },
+        "project": {"key": "DEV"},
+    }
+    cfg_file = tmp_path / "config.json"
+    cfg_file.write_text(json.dumps(config_data), encoding="utf-8")
+
+    loaded = load_config(cfg_file)
+    assert loaded.status_report.accomplishment_statuses == ["Ready for Testing", "Merge Requested"]
+    assert loaded.status_report.next_up_statuses == ["In Development", "DEV In Progress"]
+
+    # Test comma-separated string normalization & deduplication
+    config_data["status_report"] = {
+        "accomplishment_statuses": "Ready for Testing, Done, Ready for Testing",
+        "next_up_statuses": ["In Progress", "In Progress", "Review"],
+    }
+    cfg_file.write_text(json.dumps(config_data), encoding="utf-8")
+    loaded_custom = load_config(cfg_file)
+    assert loaded_custom.status_report.accomplishment_statuses == ["Ready for Testing", "Done"]
+    assert loaded_custom.status_report.next_up_statuses == ["In Progress", "Review"]
+
+

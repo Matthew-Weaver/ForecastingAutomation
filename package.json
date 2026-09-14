@@ -8,12 +8,12 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "pytest -v",
-    "test:cov": "pytest --cov=forecasting_automation --cov-report=term-missing",
-    "start:cli": "python -m forecasting_automation.main",
-    "start": "streamlit run src/forecasting_automation/app.py",
-    "venv": "python -m venv .venv",
-    "setup": "python -m pip install -r requirements.txt -e .",
+    "test": ".venv/bin/pytest -v",
+    "test:cov": ".venv/bin/pytest --cov=forecasting_automation --cov-report=term-missing",
+    "start:cli": ".venv/bin/python -m forecasting_automation.main",
+    "start": ".venv/bin/python -m streamlit run src/forecasting_automation/app.py",
+    "venv": "python3 -m venv .venv",
+    "setup": ".venv/bin/python -m pip install -r requirements.txt -e .",
     "clean": "rimraf --glob \"**/__pycache__\" .pytest_cache .coverage build dist \"src/*.egg-info\""
   },
   "devDependencies": {
